@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "BlockExam"
+description = "A blockchain-based secure online examination demo for faculty and students, with exam scheduling, time-locked attempts, tamper-evident audit records, and local hash verification."
+version = "1.0.0"
+id = "artifacts/blockexam"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23360
+
+[services.development]
+run = "pnpm --filter @workspace/blockexam run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/blockexam", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/blockexam/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23360"
+BASE_PATH = "/"
