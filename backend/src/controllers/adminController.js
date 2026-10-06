@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import prisma from '../lib/prisma.js';
 
@@ -196,16 +197,21 @@ export async function updateUserRole(req, res) {
  */
 export async function createUser(req, res) {
   try {
-    const { email, password, fullName, walletAddress, role } = req.body;
+    let { email, password, fullName, walletAddress, role } = req.body;
 
-    if (!email || !password || !fullName || !walletAddress) {
+    if (!email || !password || !fullName) {
       return res.status(400).json({
-        error: 'Missing required fields: email, password, fullName, walletAddress',
+        error: 'Missing required fields: email, password, fullName',
       });
     }
 
     if (password.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    // Auto-generate Ethereum wallet address if not provided
+    if (!walletAddress || !walletAddress.trim()) {
+      walletAddress = '0x' + crypto.randomBytes(20).toString('hex');
     }
 
     const ethAddressRegex = /^0x[a-fA-F0-9]{40}$/;

@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
@@ -5,11 +6,11 @@ import prisma from '../lib/prisma.js';
 
 export async function register(req, res) {
   try {
-    const { email, password, fullName, walletAddress, role } = req.body;
+    let { email, password, fullName, walletAddress, role } = req.body;
 
-    if (!email || !password || !fullName || !walletAddress) {
+    if (!email || !password || !fullName) {
       return res.status(400).json({
-        error: 'Missing required fields: email, password, fullName, walletAddress',
+        error: 'Missing required fields: email, password, fullName',
       });
     }
 
@@ -17,6 +18,11 @@ export async function register(req, res) {
       return res.status(400).json({
         error: 'Password must be at least 6 characters long',
       });
+    }
+
+    // Auto-generate Ethereum wallet address if not provided by user
+    if (!walletAddress || !walletAddress.trim()) {
+      walletAddress = '0x' + crypto.randomBytes(20).toString('hex');
     }
 
     // Validate Ethereum wallet format (0x followed by 40 hex characters)

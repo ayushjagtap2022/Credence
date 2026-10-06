@@ -143,7 +143,7 @@ export const api = {
     email: string;
     password: string;
     fullName: string;
-    walletAddress: string;
+    walletAddress?: string;
     role?: string;
   }): Promise<{ user: AuthUser; token: string }> {
     const data = await request<{ success: boolean; token: string; user: AuthUser }>('/auth/register', {
@@ -600,7 +600,7 @@ export const api = {
       email: string;
       fullName: string;
       password: string;
-      walletAddress: string;
+      walletAddress?: string;
       role: 'STUDENT' | 'FACULTY' | 'ADMIN';
     }): Promise<{ success: boolean; user: any; message: string }> {
       return request('/admin/users', {

@@ -53,6 +53,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [walletAddress, setWalletAddress] = useState('');
+  const [showCustomWallet, setShowCustomWallet] = useState(false);
   const [role, setRole] = useState<'STUDENT' | 'FACULTY' | 'ADMIN'>('STUDENT');
 
   if (!isOpen) return null;
@@ -120,8 +121,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         }, 500);
       } else {
         // Registration
-        if (!fullName.trim() || !email.trim() || !password || !walletAddress.trim()) {
-          setError('All fields are required to register.');
+        if (!fullName.trim() || !email.trim() || !password) {
+          setError('Please provide your full name, email, and password.');
           setLoading(false);
           return;
         }
@@ -132,18 +133,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           return;
         }
 
-        const ethRegex = /^0x[a-fA-F0-9]{40}$/;
-        if (!ethRegex.test(walletAddress.trim())) {
-          setError('Invalid Ethereum wallet format. Must start with 0x followed by 40 hex characters.');
-          setLoading(false);
-          return;
+        let finalWallet = walletAddress.trim();
+        if (finalWallet) {
+          const ethRegex = /^0x[a-fA-F0-9]{40}$/;
+          if (!ethRegex.test(finalWallet)) {
+            setError('Invalid Ethereum wallet format. Must start with 0x followed by 40 hex characters.');
+            setLoading(false);
+            return;
+          }
+        } else {
+          finalWallet = generateRandomWallet();
         }
 
         const res = await api.register({
           email: email.trim(),
           password,
           fullName: fullName.trim(),
-          walletAddress: walletAddress.trim(),
+          walletAddress: finalWallet,
           role,
         });
 
@@ -362,38 +368,59 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </div>
               </div>
 
-              {/* Ethereum Wallet Address */}
-              <div>
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-foreground">Ethereum Wallet (0x...)</label>
-                  <button
-                    type="button"
-                    onClick={handleGenerateWallet}
-                    className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:underline dark:text-indigo-400"
-                  >
-                    <Sparkles size={11} /> Auto-Generate
-                  </button>
-                </div>
-                <div className="relative mt-1">
-                  <span className="pointer-events-none absolute left-3.5 top-3 text-muted-foreground">
-                    <Wallet size={16} />
+              {/* Automated Web3 Provisioning / Optional Custom Wallet */}
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 dark:border-indigo-900/40 dark:bg-indigo-950/20">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 font-semibold text-indigo-900 dark:text-indigo-300">
+                    <Sparkles size={13} className="text-indigo-600 dark:text-indigo-400" />
+                    Web3 Exam Identity: <span className="font-bold text-emerald-600 dark:text-emerald-400">Auto-Assigned</span>
                   </span>
-                  <input
-                    type="text"
-                    required
-                    value={walletAddress}
-                    onChange={(e) => setWalletAddress(e.target.value)}
-                    placeholder="0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
-                    className="mono w-full rounded-xl border border-input bg-background py-2.5 pl-10 pr-24 text-xs outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                  />
                   <button
                     type="button"
-                    onClick={handleConnectMetaMask}
-                    className="absolute right-2 top-2 rounded-lg bg-muted px-2 py-1 text-[10px] font-bold text-muted-foreground hover:bg-indigo-100 hover:text-indigo-700 dark:hover:bg-indigo-950 dark:hover:text-indigo-300"
+                    onClick={() => setShowCustomWallet(!showCustomWallet)}
+                    className="text-[11px] font-bold text-indigo-600 hover:underline dark:text-indigo-400"
                   >
-                    MetaMask
+                    {showCustomWallet ? 'Use Default' : 'Custom Wallet (Optional)'}
                   </button>
                 </div>
+
+                {showCustomWallet ? (
+                  <div className="mt-2.5 pt-2.5 border-t border-indigo-200/60 dark:border-indigo-900/40">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-foreground">Custom 0x Address</label>
+                      <button
+                        type="button"
+                        onClick={handleGenerateWallet}
+                        className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:underline dark:text-indigo-400"
+                      >
+                        <Sparkles size={10} /> Generate New
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-2.5 text-muted-foreground">
+                        <Wallet size={14} />
+                      </span>
+                      <input
+                        type="text"
+                        value={walletAddress}
+                        onChange={(e) => setWalletAddress(e.target.value)}
+                        placeholder="0x... (leave blank to auto-create)"
+                        className="mono w-full rounded-xl border border-input bg-background py-2 pl-9 pr-20 text-xs outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleConnectMetaMask}
+                        className="absolute right-1.5 top-1.5 rounded-lg bg-muted px-2 py-1 text-[10px] font-bold text-muted-foreground hover:bg-indigo-100 hover:text-indigo-700 dark:hover:bg-indigo-950 dark:hover:text-indigo-300"
+                      >
+                        MetaMask
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    A secure cryptographic key is automatically paired with your account for tamper-proof exam verification.
+                  </p>
+                )}
               </div>
             </>
           )}

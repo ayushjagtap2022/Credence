@@ -256,7 +256,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
     setStatusNotification(null);
 
     try {
-      const res = await api.admin.createUser(newUser);
+      const payload = {
+        ...newUser,
+        walletAddress: newUser.walletAddress.trim() || undefined,
+      };
+      const res = await api.admin.createUser(payload);
       setStatusNotification({ type: 'success', message: res.message || 'User created successfully' });
       setShowCreateModal(false);
       setNewUser({
@@ -982,7 +986,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
 
               <div>
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-foreground">Ethereum Wallet (0x...)</label>
+                  <label className="text-xs font-bold text-foreground">Ethereum Wallet (Optional)</label>
                   <button
                     type="button"
                     onClick={() => setNewUser({ ...newUser, walletAddress: generateRandomWallet() })}
@@ -993,12 +997,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser }) =
                 </div>
                 <input
                   type="text"
-                  required
                   value={newUser.walletAddress}
                   onChange={(e) => setNewUser({ ...newUser, walletAddress: e.target.value })}
-                  placeholder="0x..."
+                  placeholder="0x... (leave empty to auto-provision)"
                   className="mono mt-1 w-full rounded-xl border border-input bg-background py-2.5 px-3 text-xs outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
                 />
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  If left blank, a dedicated cryptographic address will be generated automatically.
+                </p>
               </div>
 
               <button
