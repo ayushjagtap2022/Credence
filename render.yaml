@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: blockexam-backend
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install && npm run db:generate
+    startCommand: npm run server
+    autoDeploy: true
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: BLOCKCHAIN_RPC_URL
+        sync: false
+      - key: DEPLOYER_PRIVATE_KEY
+        sync: false
+      - key: CONTRACT_ADDRESS
+        sync: false
+      - key: FRONTEND_URL
+        value: https://blockexam.vercel.app

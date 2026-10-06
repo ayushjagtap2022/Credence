@@ -1,0 +1,109 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  FACULTY
+  STUDENT
+  ADMIN
+}
+
+model User {
+  id            String        @id @default(uuid())
+  email         String        @unique
+  password      String
+  role          Role          @default(STUDENT)
+  walletAddress String        @unique
+  fullName      String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  createdExams  Exam[]        @relation("FacultyExams")
+  attempts      ExamAttempt[]
+  loginLogs     LoginLog[]
+
+  @@map("users")
+}
+
+model LoginLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ipAddress String?
+  userAgent String?
+  loginAt   DateTime @default(now())
+
+  @@map("login_logs")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String
+  details   String?
+  userId    String?
+  ipAddress String?
+  timestamp DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+model Exam {
+  id              String        @id @default(uuid())
+  examCode        String        @unique
+  title           String
+  description     String?
+  startTime       DateTime
+  endTime         DateTime
+  durationMinutes Int
+  totalMarks      Int
+  passingMarks    Int
+  txHash          String?
+  createdById     String
+  createdBy       User          @relation("FacultyExams", fields: [createdById], references: [id])
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  questions       Question[]
+  attempts        ExamAttempt[]
+
+  @@map("exams")
+}
+
+model Question {
+  id            String   @id @default(uuid())
+  examId        String
+  exam          Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  questionText  String
+  optionA       String
+  optionB       String
+  optionC       String
+  optionD       String
+  correctOption String
+  marks         Int      @default(1)
+
+  @@map("questions")
+}
+
+model ExamAttempt {
+  id               String   @id @default(uuid())
+  examId           String
+  exam             Exam     @relation(fields: [examId], references: [id])
+  studentId        String
+  student          User     @relation(fields: [studentId], references: [id])
+  studentWallet    String
+  answersJson      Json
+  score            Int?
+  submissionHash   String
+  blockchainTxHash String?
+  onChainVerified  Boolean  @default(false)
+  submittedAt      DateTime @default(now())
+
+  @@unique([examId, studentId])
+  @@map("exam_attempts")
+}
