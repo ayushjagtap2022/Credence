@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Shield,
   ShieldCheck,
@@ -27,6 +27,8 @@ import {
   Radio,
   Copy,
   Check,
+  LayoutDashboard,
+  LogOut,
 } from 'lucide-react';
 import { api, type AuthUser, type AuditEvent } from '../services/api';
 import { LiveVerifier } from '../components/LiveVerifier';
@@ -44,6 +46,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   onAuthSuccess,
 }) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [redirectNotice, setRedirectNotice] = useState<string | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
@@ -57,34 +62,47 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     // Check backend health & fetch live audit trail
     api.health().then((h) => setBackendHealth(h));
     api.audit().then((events) => setAuditEvents(events.slice(0, 5)));
+
+    // Load active session
+    api.user().then((u) => setCurrentUser(u));
+
+    const onAuth = (e: Event) => {
+      const detail = (e as CustomEvent<AuthUser | null>).detail;
+      setCurrentUser(detail);
+    };
+    window.addEventListener('blockexam-auth-change', onAuth);
+    return () => window.removeEventListener('blockexam-auth-change', onAuth);
   }, []);
+
+  useEffect(() => {
+    if (location.state?.requireAuth) {
+      setRedirectNotice(location.state.message || 'Please sign in to access this workspace.');
+      setAuthModalOpen(true);
+    } else if (location.state?.unauthorized) {
+      setRedirectNotice(location.state.message || 'Access denied for that workspace.');
+    }
+  }, [location.state]);
 
   const openAuth = (mode: 'login' | 'register') => {
     setAuthMode(mode);
     setAuthModalOpen(true);
   };
 
-  const handleQuickDemo = async (role: 'admin' | 'faculty' | 'student') => {
-    try {
-      const email =
-        role === 'admin'
-          ? 'admin@college.edu'
-          : role === 'faculty'
-          ? 'faculty@college.edu'
-          : 'student1@college.edu';
-      const password = 'Password123';
-      const res = await api.login(email, password);
-      onAuthSuccess(res.user);
-      navigate(
-        res.user.role.toLowerCase() === 'admin'
-          ? '/admin'
-          : role === 'faculty'
-          ? '/faculty'
-          : '/student'
-      );
-    } catch {
+  const handleSignOut = async () => {
+    await api.signOut();
+    setCurrentUser(null);
+  };
+
+  const navigateToDashboard = (u?: AuthUser | null) => {
+    const target = u || currentUser;
+    if (!target) {
       openAuth('login');
+      return;
     }
+    const role = (target.role || '').toUpperCase();
+    if (role === 'ADMIN') navigate('/admin');
+    else if (role === 'FACULTY') navigate('/faculty');
+    else navigate('/student');
   };
 
   const copyContract = () => {
@@ -169,22 +187,61 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               {dark ? '☀️' : '🌙'}
             </button>
 
-            <button
-              onClick={() => openAuth('login')}
-              className="rounded-xl border border-border bg-card px-3.5 py-2 text-xs font-bold transition hover:bg-muted"
-            >
-              Sign In
-            </button>
-
-            <button
-              onClick={() => openAuth('register')}
-              className="hidden rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm shadow-indigo-600/30 transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 dark:text-slate-950 sm:inline-flex"
-            >
-              Get Started
-            </button>
+            {currentUser ? (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => navigateToDashboard()}
+                  className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm shadow-indigo-600/30 transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 dark:text-slate-950"
+                >
+                  <LayoutDashboard size={14} />
+                  <span>Go to Console</span>
+                  <ArrowRight size={13} />
+                </button>
+                <button
+                  onClick={handleSignOut}
+                  title="Sign out of Credence"
+                  className="rounded-xl border border-border px-3 py-2 text-xs font-bold text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                >
+                  Sign Out
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => openAuth('login')}
+                  className="rounded-xl border border-border bg-card px-3.5 py-2 text-xs font-bold transition hover:bg-muted"
+                >
+                  Sign In
+                </button>
+                <button
+                  onClick={() => openAuth('register')}
+                  className="hidden rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm shadow-indigo-600/30 transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 dark:text-slate-950 sm:inline-flex"
+                >
+                  Get Started
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>
+
+      {/* Redirect Notice Banner */}
+      {redirectNotice && (
+        <div className="mx-auto max-w-4xl px-4 pt-4">
+          <div className="flex items-center justify-between rounded-2xl border border-amber-300 bg-amber-50 p-3.5 text-xs font-semibold text-amber-900 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
+            <div className="flex items-center gap-2">
+              <Lock size={16} className="shrink-0 text-amber-600 dark:text-amber-400" />
+              <span>{redirectNotice}</span>
+            </div>
+            <button
+              onClick={() => setRedirectNotice(null)}
+              className="text-amber-800 underline hover:no-underline dark:text-amber-300"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Hero Section */}
       <section className="relative overflow-hidden px-4 pb-16 pt-12 md:pb-24 md:pt-20">
@@ -213,36 +270,41 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
               {/* Action Buttons */}
               <div className="flex flex-wrap items-center gap-3 pt-2">
-                <button
-                  onClick={() => handleQuickDemo('faculty')}
-                  className="flex items-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/25 transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 dark:text-slate-950"
-                >
-                  <GraduationCap size={18} />
-                  Faculty Console
-                  <ArrowRight size={16} />
-                </button>
+                {currentUser ? (
+                  <button
+                    onClick={() => navigateToDashboard()}
+                    className="flex items-center gap-2 rounded-2xl bg-indigo-600 px-6 py-3.5 text-sm font-bold text-white shadow-lg shadow-indigo-600/25 transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 dark:text-slate-950"
+                  >
+                    <LayoutDashboard size={18} />
+                    <span>Enter {currentUser.role === 'ADMIN' ? 'Super Admin' : currentUser.role === 'FACULTY' ? 'Faculty' : 'Student'} Console</span>
+                    <ArrowRight size={16} />
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => openAuth('login')}
+                      className="flex items-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/25 transition hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 dark:text-slate-950"
+                    >
+                      <Lock size={16} />
+                      Sign In to Console
+                      <ArrowRight size={16} />
+                    </button>
 
-                <button
-                  onClick={() => handleQuickDemo('student')}
-                  className="flex items-center gap-2 rounded-2xl border border-border bg-card px-5 py-3 text-sm font-bold text-foreground transition hover:bg-muted"
-                >
-                  <User size={17} />
-                  Student Desk
-                </button>
-
-                <button
-                  onClick={() => handleQuickDemo('admin')}
-                  className="flex items-center gap-2 rounded-2xl border border-purple-500/40 bg-purple-500/10 px-4 py-3 text-sm font-bold text-purple-700 hover:bg-purple-500/20 dark:text-purple-300"
-                >
-                  <ShieldCheck size={17} />
-                  Super Admin
-                </button>
+                    <button
+                      onClick={() => openAuth('register')}
+                      className="flex items-center gap-2 rounded-2xl border border-border bg-card px-5 py-3 text-sm font-bold text-foreground transition hover:bg-muted"
+                    >
+                      <Sparkles size={16} className="text-indigo-500" />
+                      Create Free Account
+                    </button>
+                  </>
+                )}
 
                 <a
                   href="#verifier"
                   className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-indigo-600 hover:underline dark:text-indigo-400"
                 >
-                  <Search size={14} /> Verify Submission
+                  <Search size={14} /> Public Verifier
                 </a>
               </div>
 
@@ -586,7 +648,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
 
             <button
-              onClick={() => handleQuickDemo('faculty')}
+              onClick={() => (currentUser ? navigate('/faculty/audit') : openAuth('login'))}
               className="inline-flex items-center gap-2 text-xs font-bold text-indigo-600 hover:underline dark:text-indigo-400"
             >
               Open Full Audit Console →
@@ -698,10 +760,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               Create Free Account <ArrowRight size={16} />
             </button>
             <button
-              onClick={() => handleQuickDemo('faculty')}
+              onClick={() => openAuth('login')}
               className="rounded-2xl border border-border bg-card px-6 py-3.5 text-sm font-bold text-foreground hover:bg-muted"
             >
-              Try Faculty Demo
+              Sign In to Credence
             </button>
           </div>
         </div>
@@ -794,14 +856,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         initialMode={authMode}
         onClose={() => setAuthModalOpen(false)}
         onSuccess={(user) => {
+          setCurrentUser(user);
           onAuthSuccess(user);
-          navigate(
-            user.role.toUpperCase() === 'ADMIN'
-              ? '/admin'
-              : user.role.toUpperCase() === 'FACULTY'
-              ? '/faculty'
-              : '/student'
-          );
+          navigateToDashboard(user);
         }}
       />
     </div>

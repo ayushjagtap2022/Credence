@@ -96,6 +96,14 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
+    if (response.status === 401 && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/register')) {
+      localStorage.removeItem(keys.token);
+      localStorage.removeItem(keys.user);
+      localStorage.removeItem(keys.role);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('blockexam-auth-change', { detail: null }));
+      }
+    }
     const errorMsg = data?.error || data?.message || `Request failed with status ${response.status}`;
     const err = new Error(errorMsg);
     (err as any).status = response.status;
@@ -135,6 +143,9 @@ export const api = {
     localStorage.setItem(keys.token, data.token);
     write(keys.user, data.user);
     write(keys.role, data.user.role.toLowerCase());
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('blockexam-auth-change', { detail: data.user }));
+    }
 
     return { user: data.user, token: data.token };
   },
@@ -154,13 +165,20 @@ export const api = {
     localStorage.setItem(keys.token, data.token);
     write(keys.user, data.user);
     write(keys.role, data.user.role.toLowerCase());
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('blockexam-auth-change', { detail: data.user }));
+    }
 
     return { user: data.user, token: data.token };
   },
 
   async getProfile(): Promise<AuthUser | null> {
     const token = localStorage.getItem(keys.token);
-    if (!token) return null;
+    if (!token) {
+      localStorage.removeItem(keys.user);
+      localStorage.removeItem(keys.role);
+      return null;
+    }
 
     try {
       const data = await request<{ success: boolean; user: AuthUser }>('/auth/me');
@@ -176,6 +194,12 @@ export const api = {
   },
 
   async user(): Promise<AuthUser | null> {
+    const token = localStorage.getItem(keys.token);
+    if (!token) {
+      localStorage.removeItem(keys.user);
+      localStorage.removeItem(keys.role);
+      return null;
+    }
     const cached = read<AuthUser | null>(keys.user, null);
     if (cached) return cached;
     return this.getProfile();
@@ -184,19 +208,28 @@ export const api = {
   async signIn(user: any) {
     write(keys.user, user);
     write(keys.role, user.role.toLowerCase());
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('blockexam-auth-change', { detail: user }));
+    }
     return user;
   },
 
   async signOut(): Promise<void> {
     localStorage.removeItem(keys.token);
     localStorage.removeItem(keys.user);
+    localStorage.removeItem(keys.role);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('blockexam-auth-change', { detail: null }));
+    }
   },
 
   // Role and Clock settings
-  async getRole(): Promise<string> {
+  async getRole(): Promise<string | null> {
+    const token = localStorage.getItem(keys.token);
+    if (!token) return null;
     const user = read<AuthUser | null>(keys.user, null);
     if (user?.role) return user.role.toLowerCase();
-    return read(keys.role, 'faculty');
+    return null;
   },
 
   async setRole(value: string): Promise<string> {

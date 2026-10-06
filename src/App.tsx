@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate, useParams, Navigate } from 'react-router-dom';
 import { Activity, ArrowLeft, ArrowRight, ArrowUpRight, BookOpenCheck, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clock3, FileClock, Fingerprint, Flag, GraduationCap, LayoutDashboard, LockKeyhole, LogOut, Menu, Moon, Plus, Radio, RotateCcw, Shield, ShieldCheck, Sun, UserRound, Users, Wallet, X, Zap, ExternalLink, Copy } from 'lucide-react';
 import { api, type AuthUser } from './services/api';
 import { LandingPage } from './pages/LandingPage';
 import { AuthModal } from './components/AuthModal';
 import { AdminDashboard } from './pages/AdminDashboard';
+import { ProtectedRoute } from './components/ProtectedRoute';
 import './index.css';
 
 type Exam = { id: string; name: string; code: string; date: string; start: string; end: string; duration: number; passingMarks: number; totalMarks?: number; questions: Question[]; whitelist: string[]; txHash?: string };
@@ -42,29 +43,38 @@ function EmptyState({ icon: Icon = FileClock, title, body, action }: any) {
   return <div className="surface rounded-2xl px-6 py-14 text-center"><span className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-muted text-muted-foreground"><Icon size={22} /></span><h3 className="font-bold">{title}</h3><p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">{body}</p>{action && <div className="mt-5">{action}</div>}</div>;
 }
 
-function AdminDashboardRoute() {
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
-  useEffect(() => {
-    api.user().then((u) => {
-      if (u) setCurrentUser(u);
-      else {
-        setCurrentUser({
-          id: 'admin-default',
-          email: 'admin@college.edu',
-          fullName: 'Super Administrator',
-          role: 'ADMIN',
-          walletAddress: '0x90F79bf6EB2c4f870365E785982E1f101E93b906',
-        });
-      }
-    });
-  }, []);
-
-  if (!currentUser) return <div className="h-64 animate-pulse rounded-2xl bg-muted" />;
-  return <AdminDashboard currentUser={currentUser} />;
+function AdminDashboardRoute({ user }: { user: AuthUser | null }) {
+  if (!user) return <div className="h-64 animate-pulse rounded-2xl bg-muted" />;
+  return <AdminDashboard currentUser={user} />;
 }
 
 function App() {
   const [dark, setDark] = useState(() => localStorage.getItem('blockexam.theme') === 'dark');
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  const checkAuth = useCallback(async () => {
+    try {
+      const u = await api.user();
+      setUser(u);
+    } catch {
+      setUser(null);
+    } finally {
+      setAuthLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkAuth();
+    const handleAuthChange = (event: Event) => {
+      const detail = (event as CustomEvent<AuthUser | null>).detail;
+      setUser(detail);
+      setAuthLoading(false);
+    };
+    window.addEventListener('blockexam-auth-change', handleAuthChange);
+    return () => window.removeEventListener('blockexam-auth-change', handleAuthChange);
+  }, [checkAuth]);
+
   const toggleTheme = () => {
     const next = !dark;
     setDark(next);
@@ -76,53 +86,182 @@ function App() {
     document.documentElement.classList.toggle('dark', dark);
   }, [dark]);
 
-  return <BrowserRouter><Routes>
-    <Route path="/" element={<LandingPage dark={dark} toggleTheme={toggleTheme} onAuthSuccess={() => {}} />} />
-    <Route path="/faculty" element={<Shell><FacultyHome /></Shell>} />
-    <Route path="/faculty/exams" element={<Shell><ExamList /></Shell>} />
-    <Route path="/faculty/exams/new" element={<Shell><CreateExam /></Shell>} />
-    <Route path="/faculty/audit" element={<Shell><AuditPage /></Shell>} />
-    <Route path="/student" element={<Shell><StudentHome /></Shell>} />
-    <Route path="/admin" element={<Shell><AdminDashboardRoute /></Shell>} />
-    <Route path="/exam/:examId" element={<ExamSession />} />
-    <Route path="/results/:attemptId" element={<Shell><ResultPage /></Shell>} />
-    <Route path="*" element={<Shell><EmptyState title="Page not found" body="This route is outside the console." action={<Btn to="/">Return to home</Btn>} /></Shell>} />
-  </Routes></BrowserRouter>;
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* PUBLIC ROUTE: Landing Page accessible to all (including guests) */}
+        <Route
+          path="/"
+          element={
+            <LandingPage
+              dark={dark}
+              toggleTheme={toggleTheme}
+              onAuthSuccess={(u) => setUser(u)}
+            />
+          }
+        />
+
+        {/* FACULTY ONLY ROUTES: Guests redirected to /, Students redirected to /student */}
+        <Route
+          path="/faculty"
+          element={
+            <ProtectedRoute user={user} loading={authLoading} allowedRoles={['FACULTY', 'ADMIN']}>
+              <Shell user={user} onSignOut={() => setUser(null)}>
+                <FacultyHome />
+              </Shell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/faculty/exams"
+          element={
+            <ProtectedRoute user={user} loading={authLoading} allowedRoles={['FACULTY', 'ADMIN']}>
+              <Shell user={user} onSignOut={() => setUser(null)}>
+                <ExamList />
+              </Shell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/faculty/exams/new"
+          element={
+            <ProtectedRoute user={user} loading={authLoading} allowedRoles={['FACULTY', 'ADMIN']}>
+              <Shell user={user} onSignOut={() => setUser(null)}>
+                <CreateExam />
+              </Shell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/faculty/audit"
+          element={
+            <ProtectedRoute user={user} loading={authLoading} allowedRoles={['FACULTY', 'ADMIN']}>
+              <Shell user={user} onSignOut={() => setUser(null)}>
+                <AuditPage />
+              </Shell>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* STUDENT ONLY ROUTES: Guests redirected to /, Faculty redirected to /faculty */}
+        <Route
+          path="/student"
+          element={
+            <ProtectedRoute user={user} loading={authLoading} allowedRoles={['STUDENT', 'ADMIN']}>
+              <Shell user={user} onSignOut={() => setUser(null)}>
+                <StudentHome />
+              </Shell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/exam/:examId"
+          element={
+            <ProtectedRoute user={user} loading={authLoading} allowedRoles={['STUDENT', 'ADMIN']}>
+              <ExamSession />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/results/:attemptId"
+          element={
+            <ProtectedRoute user={user} loading={authLoading} allowedRoles={['STUDENT', 'FACULTY', 'ADMIN']}>
+              <Shell user={user} onSignOut={() => setUser(null)}>
+                <ResultPage />
+              </Shell>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* SUPER ADMIN ONLY ROUTE: Guests redirected to /, Students/Faculty blocked */}
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute user={user} loading={authLoading} allowedRoles={['ADMIN']}>
+              <Shell user={user} onSignOut={() => setUser(null)}>
+                <AdminDashboardRoute user={user} />
+              </Shell>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 404 CATCH-ALL */}
+        <Route
+          path="*"
+          element={
+            user ? (
+              <Shell user={user} onSignOut={() => setUser(null)}>
+                <EmptyState
+                  title="Page not found"
+                  body="This route is outside your console."
+                  action={<Btn to="/">Return to home</Btn>}
+                />
+              </Shell>
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+      </Routes>
+    </BrowserRouter>
+  );
 }
+
 function Brand({ compact = false }: { compact?: boolean }) {
-  return <Link to="/" className="flex items-center gap-3 text-inherit no-underline"><span className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-700 text-white"><Shield size={21} /></span><span><span className="block font-[Manrope] text-lg font-extrabold tracking-tight">Credence</span>{!compact && <span className="block text-[10px] font-bold tracking-[.14em] text-muted-foreground">SEPOLIA + NEON</span>}</span></Link>;
+  return (
+    <Link to="/" className="flex items-center gap-3 text-inherit no-underline">
+      <span className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-700 text-white">
+        <Shield size={21} />
+      </span>
+      <span>
+        <span className="block font-[Manrope] text-lg font-extrabold tracking-tight">Credence</span>
+        {!compact && (
+          <span className="block text-[10px] font-bold tracking-[.14em] text-muted-foreground">
+            SEPOLIA + NEON
+          </span>
+        )}
+      </span>
+    </Link>
+  );
 }
-function ThemeButton({ dark, toggle }: any) { return <button onClick={toggle} aria-label="Toggle color theme" data-testid="button-theme-toggle" className="grid h-10 w-10 place-items-center rounded-xl border border-border bg-card text-muted-foreground hover:text-foreground">{dark ? <Sun size={17} /> : <Moon size={17} />}</button>; }
-function Shell({ children }: any) {
+
+function ThemeButton({ dark, toggle }: any) {
+  return (
+    <button
+      onClick={toggle}
+      aria-label="Toggle color theme"
+      data-testid="button-theme-toggle"
+      className="grid h-10 w-10 place-items-center rounded-xl border border-border bg-card text-muted-foreground hover:text-foreground"
+    >
+      {dark ? <Sun size={17} /> : <Moon size={17} />}
+    </button>
+  );
+}
+
+function Shell({
+  children,
+  user: propUser,
+  onSignOut,
+}: {
+  children: any;
+  user?: AuthUser | null;
+  onSignOut?: () => void;
+}) {
   const loc = useLocation();
   const nav = useNavigate();
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [role, setRole] = useState('faculty');
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(propUser || null);
   const [clock, setClock] = useState('10:15');
   const [dark, setDark] = useState(() => localStorage.getItem('blockexam.theme') === 'dark');
   const [mobile, setMobile] = useState(false);
-  const [backendStatus, setBackendStatus] = useState({ online: false, status: 'CHECKING' });
-  const [authModalOpen, setAuthModalOpen] = useState(false);
 
   useEffect(() => {
-    api.user().then((u) => {
-      if (u) {
-        setUser(u);
-        setRole(u.role?.toLowerCase() || 'faculty');
-      }
-    });
-    api.getRole().then(setRole);
+    if (propUser) {
+      setCurrentUser(propUser);
+    } else {
+      api.user().then((u) => setCurrentUser(u));
+    }
     api.getClock().then(setClock);
-    api.health().then((h) => setBackendStatus(h));
-  }, []);
-
-  const switchRole = async (value: string) => {
-    setRole(value);
-    await api.setRole(value);
-    if (value === 'admin') nav('/admin');
-    else if (value === 'faculty') nav('/faculty');
-    else nav('/student');
-  };
+  }, [propUser]);
 
   const chooseClock = async (value: string) => {
     setClock(value);
@@ -130,63 +269,217 @@ function Shell({ children }: any) {
     window.dispatchEvent(new CustomEvent('blockexam-clock', { detail: value }));
   };
 
-  const navs = role === 'admin'
-    ? [
-        { href: '/admin', label: 'Admin Console', icon: ShieldCheck },
-        { href: '/faculty', label: 'Faculty View', icon: LayoutDashboard },
-        { href: '/student', label: 'Student View', icon: BookOpenCheck },
-      ]
-    : role === 'faculty'
-    ? [
-        { href: '/faculty', label: 'Overview', icon: LayoutDashboard },
-        { href: '/faculty/exams', label: 'Exams', icon: BookOpenCheck },
-        { href: '/faculty/audit', label: 'Audit trail', icon: FileClock },
-        ...(user?.role === 'ADMIN' ? [{ href: '/admin', label: 'Super Admin', icon: ShieldCheck }] : []),
-      ]
-    : [
-        { href: '/student', label: 'My exams', icon: BookOpenCheck },
-        ...(user?.role === 'ADMIN' ? [{ href: '/admin', label: 'Super Admin', icon: ShieldCheck }] : []),
-      ];
+  const userRole = (currentUser?.role || '').toLowerCase();
+
+  const navs =
+    userRole === 'admin'
+      ? [
+          { href: '/admin', label: 'Admin Console', icon: ShieldCheck },
+          { href: '/faculty', label: 'Faculty View', icon: LayoutDashboard },
+          { href: '/student', label: 'Student View', icon: BookOpenCheck },
+        ]
+      : userRole === 'faculty'
+      ? [
+          { href: '/faculty', label: 'Overview', icon: LayoutDashboard },
+          { href: '/faculty/exams', label: 'Exams', icon: BookOpenCheck },
+          { href: '/faculty/audit', label: 'Audit trail', icon: FileClock },
+        ]
+      : [
+          { href: '/student', label: 'My exams', icon: BookOpenCheck },
+        ];
 
   const signOut = async () => {
     await api.signOut();
-    setUser(null);
+    if (onSignOut) onSignOut();
+    setCurrentUser(null);
     nav('/');
   };
 
-  return <div className="app-shell md:flex">
-    <aside className={cn('sidebar fixed inset-y-0 left-0 z-40 flex w-[265px] flex-col px-4 py-5 transition-transform md:sticky md:top-0 md:h-[100dvh] md:translate-x-0', mobile ? 'translate-x-0' : '-translate-x-full')}>
-      <div className="flex items-center justify-between px-2"><Brand /><button className="md:hidden" onClick={() => setMobile(false)}><X size={18} /></button></div>
-      <div className="mt-8 px-2"><label className="mb-2 block text-[10px] font-bold uppercase tracking-[.16em] text-slate-400">Workspace</label><div className="relative"><select data-testid="select-role-switcher" className="w-full appearance-none rounded-xl border border-white/10 bg-white/[.07] px-3 py-2.5 text-sm font-semibold text-slate-100 outline-none" value={role} onChange={(e) => switchRole(e.target.value)}><option value="admin">Super Admin console</option><option value="faculty">Faculty console</option><option value="student">Student portal</option></select><ChevronDown size={15} className="pointer-events-none absolute right-3 top-3 text-slate-400" /></div></div>
-      <nav className="mt-7 grid gap-1">{navs.map(({ href, label, icon: Icon }) => <Link key={href} to={href} onClick={() => setMobile(false)} data-testid={`link-nav-${label.toLowerCase().replace(/\s/g, '-')}`} className={cn('flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold transition', loc.pathname === href || (href !== '/faculty' && loc.pathname.startsWith(href)) ? 'bg-white/10 text-white' : 'text-slate-400 hover:bg-white/[.06] hover:text-slate-100')}><Icon size={17} />{label}{href === '/faculty/audit' && <span className="ml-auto rounded-full bg-emerald-400/15 px-2 py-0.5 text-[9px] font-bold text-emerald-300">LIVE</span>}</Link>)}</nav>
-      <div className="mt-auto">
-        <div className="rounded-2xl border border-white/10 bg-white/[.05] p-3.5">
-          <div className="flex items-center justify-between"><span className="flex items-center gap-2 text-xs font-bold text-slate-200"><span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" /> Sepolia Testnet</span><Pill tone="green">CONNECTED</Pill></div>
-          <p className="mono mt-2 text-[11px] text-slate-400">chainId <span className="text-slate-200">11155111</span></p>
-          <p className="mono mt-1 text-[10px] text-slate-400 truncate">Contract: 0x1D14...98837</p>
-          {role === 'student' && <div className="mt-3 border-t border-white/10 pt-3"><label className="block text-[10px] font-bold uppercase tracking-wide text-slate-400">Simulated system time</label><select value={clock} onChange={(e) => chooseClock(e.target.value)} data-testid="select-simulated-time" className="mono mt-1.5 w-full rounded-lg border border-white/10 bg-slate-800 px-2 py-2 text-xs text-slate-100"><option value="09:50">09:50 · locked</option><option value="10:15">10:15 · active</option><option value="11:05">11:05 · closed</option></select></div>}
+  return (
+    <div className="app-shell md:flex">
+      <aside
+        className={cn(
+          'sidebar fixed inset-y-0 left-0 z-40 flex w-[265px] flex-col px-4 py-5 transition-transform md:sticky md:top-0 md:h-[100dvh] md:translate-x-0',
+          mobile ? 'translate-x-0' : '-translate-x-full'
+        )}
+      >
+        <div className="flex items-center justify-between px-2">
+          <Brand />
+          <button className="md:hidden" onClick={() => setMobile(false)}>
+            <X size={18} />
+          </button>
         </div>
-        <div className="mt-4 flex items-center gap-3 rounded-xl px-2 py-3 bg-white/[.03] border border-white/5">
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-indigo-500/20 text-sm font-bold text-indigo-300">
-            {(user?.fullName || (role === 'admin' ? 'Super Admin' : role === 'student' ? 'Rohan Mehta' : 'Dr. Ananya Sharma')).split(' ').map((x: string) => x[0]).slice(0, 2).join('')}
+
+        {/* Verified Role Badge (No arbitrary role switching allowed!) */}
+        <div className="mt-8 px-2">
+          <label className="mb-2 block text-[10px] font-bold uppercase tracking-[.16em] text-slate-400">
+            Authenticated Role
+          </label>
+          <div className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[.07] px-3 py-2.5 text-xs font-bold text-slate-100">
+            <span
+              className={cn(
+                'h-2 w-2 rounded-full',
+                userRole === 'admin'
+                  ? 'bg-purple-400 shadow-sm shadow-purple-400'
+                  : userRole === 'faculty'
+                  ? 'bg-indigo-400 shadow-sm shadow-indigo-400'
+                  : 'bg-emerald-400 shadow-sm shadow-emerald-400'
+              )}
+            />
+            <span className="uppercase">
+              {userRole === 'admin'
+                ? 'Super Admin Console'
+                : userRole === 'faculty'
+                ? 'Faculty Console'
+                : 'Student Portal'}
+            </span>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-bold text-white">{user?.fullName || (role === 'admin' ? 'Super Admin' : role === 'student' ? 'Rohan Mehta' : 'Dr. Ananya Sharma')}</p>
-            <p className="truncate text-[10px] text-slate-400">{user?.email || (role === 'admin' ? 'admin@college.edu' : role === 'student' ? 'student1@college.edu' : 'faculty@college.edu')}</p>
-            {user?.walletAddress && <p className="mono truncate text-[9px] text-indigo-300">{user.walletAddress.slice(0, 6)}...{user.walletAddress.slice(-4)}</p>}
-          </div>
-          <button aria-label="Sign out" title="Sign out" data-testid="button-sign-out" onClick={signOut} className="text-slate-400 hover:text-white transition p-1.5 rounded-lg hover:bg-white/10"><LogOut size={16} /></button>
         </div>
+
+        {/* Sidebar Nav Links strictly tailored to authenticated role */}
+        <nav className="mt-7 grid gap-1">
+          {navs.map(({ href, label, icon: Icon }) => (
+            <Link
+              key={href}
+              to={href}
+              onClick={() => setMobile(false)}
+              data-testid={`link-nav-${label.toLowerCase().replace(/\s/g, '-')}`}
+              className={cn(
+                'flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold transition',
+                loc.pathname === href || (href !== '/faculty' && loc.pathname.startsWith(href))
+                  ? 'bg-white/10 text-white'
+                  : 'text-slate-400 hover:bg-white/[.06] hover:text-slate-100'
+              )}
+            >
+              <Icon size={17} />
+              {label}
+              {href === '/faculty/audit' && (
+                <span className="ml-auto rounded-full bg-emerald-400/15 px-2 py-0.5 text-[9px] font-bold text-emerald-300">
+                  LIVE
+                </span>
+              )}
+            </Link>
+          ))}
+        </nav>
+
+        <div className="mt-auto">
+          <div className="rounded-2xl border border-white/10 bg-white/[.05] p-3.5">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2 text-xs font-bold text-slate-200">
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" /> Sepolia Testnet
+              </span>
+              <Pill tone="green">CONNECTED</Pill>
+            </div>
+            <p className="mono mt-2 text-[11px] text-slate-400">
+              chainId <span className="text-slate-200">11155111</span>
+            </p>
+            <p className="mono mt-1 text-[10px] text-slate-400 truncate">Contract: 0x1D14...98837</p>
+            {userRole === 'student' && (
+              <div className="mt-3 border-t border-white/10 pt-3">
+                <label className="block text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                  Simulated system time
+                </label>
+                <select
+                  value={clock}
+                  onChange={(e) => chooseClock(e.target.value)}
+                  data-testid="select-simulated-time"
+                  className="mono mt-1.5 w-full rounded-lg border border-white/10 bg-slate-800 px-2 py-2 text-xs text-slate-100"
+                >
+                  <option value="09:50">09:50 · locked</option>
+                  <option value="10:15">10:15 · active</option>
+                  <option value="11:05">11:05 · closed</option>
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* User profile card with actual authenticated info */}
+          <div className="mt-4 flex items-center gap-3 rounded-xl px-2 py-3 bg-white/[.03] border border-white/5">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-indigo-500/20 text-sm font-bold text-indigo-300">
+              {(currentUser?.fullName || 'User')
+                .split(' ')
+                .map((x: string) => x[0])
+                .slice(0, 2)
+                .join('')}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-bold text-white">
+                {currentUser?.fullName || 'Authenticated User'}
+              </p>
+              <p className="truncate text-[10px] text-slate-400">{currentUser?.email || ''}</p>
+              {currentUser?.walletAddress && (
+                <p
+                  className="mono truncate text-[9px] text-indigo-300"
+                  title={currentUser.walletAddress}
+                >
+                  {currentUser.walletAddress.slice(0, 6)}...{currentUser.walletAddress.slice(-4)}
+                </p>
+              )}
+            </div>
+            <button
+              aria-label="Sign out"
+              title="Sign out"
+              data-testid="button-sign-out"
+              onClick={signOut}
+              className="text-slate-400 hover:text-white transition p-1.5 rounded-lg hover:bg-white/10"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {mobile && (
+        <button
+          aria-label="Close navigation"
+          className="fixed inset-0 z-30 bg-slate-950/40 md:hidden"
+          onClick={() => setMobile(false)}
+        />
+      )}
+
+      <div className="min-w-0 flex-1">
+        <header className="sticky top-0 z-20 flex h-[68px] items-center justify-between border-b border-border bg-background/90 px-5 backdrop-blur md:px-9">
+          <div className="flex items-center gap-3">
+            <button className="md:hidden" aria-label="Open navigation" onClick={() => setMobile(true)}>
+              <Menu size={19} />
+            </button>
+            <p className="text-xs font-semibold text-muted-foreground">
+              LIVE NETWORK <span className="mx-1.5">/</span>
+              <span className="text-foreground uppercase">
+                {userRole === 'admin'
+                  ? 'SUPER ADMIN CONSOLE'
+                  : userRole === 'student'
+                  ? 'STUDENT PORTAL'
+                  : 'FACULTY CONSOLE'}
+              </span>
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:flex">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> Sepolia + Neon DB Live
+            </span>
+            <ThemeButton
+              dark={dark}
+              toggle={() => {
+                document.documentElement.classList.toggle('dark');
+                localStorage.setItem('blockexam.theme', !dark ? 'dark' : 'light');
+                setDark(!dark);
+              }}
+            />
+          </div>
+        </header>
+        <main className="mx-auto max-w-[1240px] px-5 py-7 md:px-9 md:py-9">
+          <div key={loc.pathname} className="enter">
+            {children}
+          </div>
+        </main>
+        <footer className="mx-auto flex max-w-[1240px] items-center justify-between px-5 pb-7 text-[10px] font-semibold tracking-wide text-muted-foreground md:px-9">
+          <span>CREDENCE · IMMUTABLE ACADEMIC ASSESSMENTS</span>
+          <span className="mono">SEPOLIA CHAIN ID 11155111</span>
+        </footer>
       </div>
-    </aside>
-    {mobile && <button aria-label="Close navigation" className="fixed inset-0 z-30 bg-slate-950/40 md:hidden" onClick={() => setMobile(false)} />}
-    <div className="min-w-0 flex-1">
-      <header className="sticky top-0 z-20 flex h-[68px] items-center justify-between border-b border-border bg-background/90 px-5 backdrop-blur md:px-9"><div className="flex items-center gap-3"><button className="md:hidden" aria-label="Open navigation" onClick={() => setMobile(true)}><Menu size={19} /></button><p className="text-xs font-semibold text-muted-foreground">LIVE NETWORK <span className="mx-1.5">/</span><span className="text-foreground">{role === 'admin' ? 'SUPER ADMIN CONSOLE' : role === 'student' ? 'STUDENT PORTAL' : 'FACULTY CONSOLE'}</span></p></div><div className="flex items-center gap-3"><span className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:flex"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> Sepolia + Neon DB Live</span><ThemeButton dark={dark} toggle={() => { document.documentElement.classList.toggle('dark'); localStorage.setItem('blockexam.theme', !dark ? 'dark' : 'light'); setDark(!dark); }} /></div></header>
-      <main className="mx-auto max-w-[1240px] px-5 py-7 md:px-9 md:py-9"><div key={loc.pathname} className="enter">{children}</div></main>
-      <footer className="mx-auto flex max-w-[1240px] items-center justify-between px-5 pb-7 text-[10px] font-semibold tracking-wide text-muted-foreground md:px-9"><span>CREDENCE · IMMUTABLE ACADEMIC ASSESSMENTS</span><span className="mono">SEPOLIA CHAIN ID 11155111</span></footer>
     </div>
-    <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} onSuccess={(u) => { setUser(u); setRole(u.role.toLowerCase()); }} />
-  </div>;
+  );
 }
 function PageTitle({ eyebrow, title, subtitle, action }: any) { return <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-[11px] font-bold uppercase tracking-[.15em] text-indigo-700 dark:text-indigo-300">{eyebrow}</p><h1 className="mt-2 font-[Manrope] text-3xl font-extrabold tracking-[-.04em] md:text-[38px]">{title}</h1>{subtitle && <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">{subtitle}</p>}</div>{action}</div>; }
 function useData<T>(fn: () => Promise<T>, deps: any[] = []) {
